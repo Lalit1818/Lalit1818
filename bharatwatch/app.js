@@ -47,6 +47,7 @@
     comments: JSON.parse(localStorage.getItem('comments') || '{}'), // { videoId: [{ id, text, ts }] }
     route: '#/home',
     reelIndex: 0,
+    reelsLoaded: [],
   };
 
   // Elements
@@ -223,9 +224,11 @@
   function getLikedVideos() { return sampleVideos.filter(v => state.likes.has(v.id)); }
   function getSavedVideos() { return sampleVideos.filter(v => state.saves.has(v.id)); }
   function getHistoryVideos() { return JSON.parse(localStorage.getItem('history') || '[]').map(id => sampleVideos.find(v => v.id === id)).filter(Boolean); }
-  function getLikedReels() { return sampleReels.filter(r => state.likes.has(r.id)); }
-  function getSavedReels() { return sampleReels.filter(r => state.saves.has(r.id)); }
-  function getHistoryReels() { return JSON.parse(localStorage.getItem('historyReels') || '[]').map(id => sampleReels.find(r => r.id === id)).filter(Boolean); }
+  function reelList() { return state.reelsLoaded.length ? state.reelsLoaded : sampleReels; }
+  function findReelById(id) { return reelList().find(r => r.id === id) || null; }
+  function getLikedReels() { return reelList().filter(r => state.likes.has(r.id)); }
+  function getSavedReels() { return reelList().filter(r => state.saves.has(r.id)); }
+  function getHistoryReels() { return JSON.parse(localStorage.getItem('historyReels') || '[]').map(id => findReelById(id)).filter(Boolean); }
   function pushHistory(id) {
     const cur = JSON.parse(localStorage.getItem('history') || '[]');
     if (cur[0] !== id) { cur.unshift(id); if (cur.length > 100) cur.pop(); localStorage.setItem('history', JSON.stringify(cur)); }
@@ -346,12 +349,16 @@
       renderReelComments();
     });
     on(reelLike, 'click', () => {
-      const id = (sampleReels[state.reelIndex] || {}).id;
+      const list = state.reelsLoaded.length ? state.reelsLoaded : sampleReels;
+      const id = (list[state.reelIndex] || {}).id;
       if (!id) return; toggleLike(id);
+      updateReelActionStates(id);
     });
     on(reelSave, 'click', () => {
-      const id = (sampleReels[state.reelIndex] || {}).id;
+      const list = state.reelsLoaded.length ? state.reelsLoaded : sampleReels;
+      const id = (list[state.reelIndex] || {}).id;
       if (!id) return; toggleSave(id);
+      updateReelActionStates(id);
     });
 
     // Scroll/swipe up/down to switch
@@ -375,19 +382,26 @@
   }
 
   function openReel(index) {
-    state.reelIndex = index;
-    const reel = sampleReels[index] || sampleReels[0];
+    const list = state.reelsLoaded.length ? state.reelsLoaded : sampleReels;
+    const max = list.length || 1;
+    state.reelIndex = ((index % max) + max) % max;
+    const reel = list[state.reelIndex] || list[0];
     reelVideo.src = reel.src;
     reelVideo.poster = thumbAsDataUrl(reel.title, 9, 16);
     reelVideo.currentTime = 0;
     reelVideo.play().catch(() => {});
     pushReelHistory(reel.id);
+    updateReelActionStates(reel.id);
     renderReelComments();
     reelPlayer.hidden = false;
     location.hash = '#/reels';
   }
   function nextReel() { openReel(state.reelIndex + 1); }
   function prevReel() { openReel(state.reelIndex - 1); }
+  function updateReelActionStates(id) {
+    if (reelLike) reelLike.classList.toggle('active', state.likes.has(id));
+    if (reelSave) reelSave.classList.toggle('active', state.saves.has(id));
+  }
   function renderReelComments() {
     const id = 'reel-' + state.reelIndex;
     const all = state.comments[id] || [];
@@ -445,6 +459,7 @@
   function openVideo(id) {
     BWApi.getVideo(id).then(video => {
       if (!video) return;
+      pushHistory(id);
       videoEl.src = video.hls || video.src;
       videoEl.poster = video.thumb || thumbAsDataUrl(video.title, 16, 9);
       videoEl.currentTime = 0;
@@ -845,7 +860,5 @@
     return d;
   }
 
-  // Hook into video open to push history
-  const _openVideo = openVideo;
-  openVideo = function(id) { pushHistory(id); _openVideo(id); };
+  // end
 })();
