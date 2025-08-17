@@ -81,7 +81,7 @@
   setupDrawer();
   setupNotifications();
   setupSearch();
-  renderCategories();
+  // Categories removed from hero as per request
   renderReels();
   renderVideos();
   setupRouting();
@@ -210,18 +210,7 @@
     return matches;
   }
 
-  // Categories
-  function renderCategories() {
-    // Already laid out in HTML; just wire active state
-    $$('#categoriesBar .cat').forEach(a => {
-      on(a, 'click', e => {
-        $$('#categoriesBar .cat').forEach(c => c.classList.remove('active'));
-        a.classList.add('active');
-      });
-    });
-  }
-
-  // Reels list
+  // Categories removed from hero as per request
   function renderReels() {
     reelsList.innerHTML = '';
     const items = [...sampleReels, ...sampleReels]; // preload some to allow long scroll
