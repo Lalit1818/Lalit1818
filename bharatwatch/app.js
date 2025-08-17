@@ -124,8 +124,23 @@
 
   // Drawer
   function setupDrawer() {
-    const open = () => { sideDrawer.classList.add('open'); scrim.hidden = false; };
-    const close = () => { sideDrawer.classList.remove('open'); scrim.hidden = true; };
+    const focusFirstLink = () => { const first = sideDrawer && sideDrawer.querySelector('.drawer__item'); if (first) first.focus(); };
+    const open = () => {
+      sideDrawer.classList.add('open');
+      sideDrawer.removeAttribute('aria-hidden');
+      sideDrawer.removeAttribute('inert');
+      sideDrawer.inert = false;
+      scrim.hidden = false;
+      setTimeout(focusFirstLink, 0);
+    };
+    const close = () => {
+      if (sideDrawer.contains(document.activeElement) && menuBtn) menuBtn.focus();
+      sideDrawer.classList.remove('open');
+      sideDrawer.setAttribute('aria-hidden', 'true');
+      sideDrawer.setAttribute('inert', '');
+      sideDrawer.inert = true;
+      scrim.hidden = true;
+    };
     if (menuBtn) on(menuBtn, 'click', open);
     if (drawerClose) on(drawerClose, 'click', close);
     if (scrim) on(scrim, 'click', close);
