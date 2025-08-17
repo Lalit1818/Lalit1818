@@ -72,6 +72,7 @@
   const reelVideo = $('#reelVideo');
   const reelBack = $('#reelBack');
   const reelLike = $('#reelLike');
+  const reelSave = $('#reelSave');
   const reelComment = $('#reelComment');
   const reelComments = $('#reelComments');
   const reelCommentsClose = $('#reelCommentsClose');
@@ -124,9 +125,16 @@
   function getLikedVideos() { return sampleVideos.filter(v => state.likes.has(v.id)); }
   function getSavedVideos() { return sampleVideos.filter(v => state.saves.has(v.id)); }
   function getHistoryVideos() { return JSON.parse(localStorage.getItem('history') || '[]').map(id => sampleVideos.find(v => v.id === id)).filter(Boolean); }
+  function getLikedReels() { return sampleReels.filter(r => state.likes.has(r.id)); }
+  function getSavedReels() { return sampleReels.filter(r => state.saves.has(r.id)); }
+  function getHistoryReels() { return JSON.parse(localStorage.getItem('historyReels') || '[]').map(id => sampleReels.find(r => r.id === id)).filter(Boolean); }
   function pushHistory(id) {
     const cur = JSON.parse(localStorage.getItem('history') || '[]');
     if (cur[0] !== id) { cur.unshift(id); if (cur.length > 100) cur.pop(); localStorage.setItem('history', JSON.stringify(cur)); }
+  }
+  function pushReelHistory(id) {
+    const cur = JSON.parse(localStorage.getItem('historyReels') || '[]');
+    if (cur[0] !== id) { cur.unshift(id); if (cur.length > 200) cur.pop(); localStorage.setItem('historyReels', JSON.stringify(cur)); }
   }
 
   // Routing (SPA)
@@ -172,9 +180,9 @@
       const title = hash.replace('#/','').replace(/\b\w/g, c => c.toUpperCase()).replace(/-/g,' ');
       switch (hash) {
         case '#/profile': showPage('Profile', renderProfilePage()); break;
-        case '#/liked': showPage('Liked Videos', renderSimpleList(getLikedVideos())); break;
-        case '#/saved': showPage('Saved Videos', renderSimpleList(getSavedVideos())); break;
-        case '#/history': showPage('Watch History', renderSimpleList(getHistoryVideos())); break;
+        case '#/liked': showPage('Liked', renderMixedList(getLikedVideos(), getLikedReels())); break;
+        case '#/saved': showPage('Saved', renderMixedList(getSavedVideos(), getSavedReels())); break;
+        case '#/history': showPage('History', renderMixedList(getHistoryVideos(), getHistoryReels())); break;
         case '#/settings': showPage('Settings', renderSettingsPage()); break;
         case '#/monetization': showPage('Monetization', renderMonetizationPage()); break;
         case '#/policy': showPage('Policies', renderPolicyPage()); break;
@@ -239,6 +247,14 @@
       reelCommentInput.value = '';
       renderReelComments();
     });
+    on(reelLike, 'click', () => {
+      const id = (sampleReels[state.reelIndex] || {}).id;
+      if (!id) return; toggleLike(id);
+    });
+    on(reelSave, 'click', () => {
+      const id = (sampleReels[state.reelIndex] || {}).id;
+      if (!id) return; toggleSave(id);
+    });
 
     // Scroll/swipe up/down to switch
     on(reelPlayer, 'wheel', (e) => {
@@ -267,6 +283,7 @@
     reelVideo.poster = thumbAsDataUrl(reel.title, 9, 16);
     reelVideo.currentTime = 0;
     reelVideo.play().catch(() => {});
+    pushReelHistory(reel.id);
     renderReelComments();
     reelPlayer.hidden = false;
     location.hash = '#/reels';
@@ -563,6 +580,15 @@
     return wrap;
   }
 
+  function renderMixedList(videos, reels) {
+    const wrap = document.createElement('div');
+    const grid = document.createElement('div'); grid.className = 'content-grid';
+    videos.forEach(v => grid.appendChild(createContentCard(v)));
+    reels.forEach(r => grid.appendChild(createContentCard({ id: r.id, title: r.title, thumb: r.thumb })));
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
   function renderProfilePage() {
     const wrap = document.createElement('div'); wrap.className = 'profile';
     // Banner
@@ -630,7 +656,13 @@
         { label: 'Set Public', action: () => alert('Set to Public') },
       ]);
     });
-    on(card, 'click', () => { if (item.id?.startsWith('vid')) openVideo(item.id); });
+    on(card, 'click', () => {
+      if (item.id?.startsWith('vid')) openVideo(item.id);
+      else if (item.id?.startsWith('reel')) {
+        const idx = sampleReels.findIndex(r => r.id === item.id);
+        if (idx >= 0) openReel(idx);
+      }
+    });
     return card;
   }
 
