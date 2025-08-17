@@ -6,9 +6,37 @@
   const on = (el, ev, fn, opts) => el.addEventListener(ev, fn, opts);
 
   // Mock data
-  const categories = ['All','Gaming','News','Food','Entertainment','Music','Podcasts'];
+  const categories = ['All','Gaming','Music','Podcasts','Movie','Food','News'];
   const sampleVideos = createSampleVideos();
   const sampleReels = createSampleReels();
+  window.Mock = {
+    getVideos: async ({ category = 'all', page = 1, pageSize = 20 } = {}) => {
+      const slug = (category || 'all').toLowerCase();
+      const filtered = sampleVideos.filter(v => slug==='all' ? true : (slug==='movie' ? v.category.toLowerCase()==='entertainment' : v.category.toLowerCase()===slug));
+      const start = (page - 1) * pageSize; const end = start + pageSize;
+      return { items: filtered.slice(start, end), nextPage: end < filtered.length ? page + 1 : null };
+    },
+    getReels: async ({ cursor='' }={}) => {
+      const start = cursor ? parseInt(cursor, 10) : 0; const size = 10; const end = Math.min(start + size, sampleReels.length);
+      return { items: sampleReels.slice(start, end), nextCursor: end < sampleReels.length ? String(end) : null };
+    },
+    getVideo: async (id) => sampleVideos.find(v => v.id === id),
+    getRelated: async (id) => {
+      const cur = sampleVideos.find(v => v.id === id); if (!cur) return { items: [] };
+      return { items: sampleVideos.filter(v => v.category === cur.category && v.id !== id).slice(0, 10) };
+    },
+    getComments: async (id, cursor='') => {
+      const all = (state.comments[id] || []).map(x => ({ id: x.id, text: x.text, ts: x.ts }));
+      const start = cursor ? parseInt(cursor, 10) : 0; const size = 20; const end = Math.min(start + size, all.length);
+      return { items: all.slice(start, end), nextCursor: end < all.length ? String(end) : null };
+    },
+    postComment: async (id, text) => {
+      const item = { id: cryptoRandom(), text, ts: Date.now() };
+      const arr = state.comments[id] || []; arr.unshift(item); state.comments[id] = arr; persistComments(); return item;
+    },
+    likeVideo: async (id, like=true) => { like ? state.likes.add(id) : state.likes.delete(id); localStorage.setItem('likes', JSON.stringify([...state.likes])); },
+    saveVideo: async (id, save=true) => { save ? state.saves.add(id) : state.saves.delete(id); localStorage.setItem('saves', JSON.stringify([...state.saves])); },
+  };
 
   // State
   const state = {
@@ -214,25 +242,37 @@
   // Categories removed from hero as per request
   function renderReels() {
     reelsList.innerHTML = '';
-    const items = [...sampleReels, ...sampleReels]; // preload some to allow long scroll
-    items.forEach((reel, idx) => {
-      const card = document.createElement('button');
-      card.className = 'reel-card';
-      card.setAttribute('aria-label', 'Open reel: ' + reel.title);
-      card.innerHTML = `
-        <div class="reel-card__thumb" data-bg="${reel.thumb}"></div>
-        <div class="reel-card__label">${escapeHtml(reel.title)}</div>
-      `;
-      on(card, 'click', () => openReel(idx % sampleReels.length));
-      reelsList.appendChild(card);
-    });
+    // Load via API/mocks
+    BWApi.getReels({}).then(({ items }) => {
+      items.forEach((reel, idx) => {
+        const card = document.createElement('button');
+        card.className = 'reel-card';
+        card.setAttribute('aria-label', 'Open reel: ' + reel.title);
+        card.innerHTML = `
+          <div class="reel-card__thumb" data-bg="${reel.thumb}"></div>
+          <div class="reel-card__label">${escapeHtml(reel.title)}</div>
+        `;
+        on(card, 'click', () => openReel(idx));
+        reelsList.appendChild(card);
+      });
+      lazyLoadInit();
+    }).catch(console.error);
   }
 
   // Videos grid
   function renderVideos() {
     videoGrid.innerHTML = '';
-    const first = sampleVideos.slice(0, 9);
-    first.forEach(v => videoGrid.appendChild(createVideoCard(v)));
+    let page = 1; const pageSize = 9; let loading = false; let done = false; let currentCategory = categoryFromHash() || 'all';
+    const load = async () => {
+      if (loading || done) return; loading = true;
+      try {
+        const { items, nextPage } = await BWApi.getVideos({ category: currentCategory, page, pageSize });
+        items.forEach(v => videoGrid.insertBefore(createVideoCard(v), sentinel));
+        if (nextPage) page = nextPage; else { done = true; io.disconnect(); }
+      } catch (e) { console.error(e); }
+      finally { loading = false; }
+    };
+    load();
     // Lazy append more
     const sentinel = document.createElement('div');
     sentinel.id = 'gridSentinel';
@@ -242,10 +282,7 @@
     const io = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
-          const currentCount = $$('.video-card', videoGrid).length;
-          const more = sampleVideos.slice(currentCount, currentCount + 6);
-          more.forEach(v => videoGrid.insertBefore(createVideoCard(v), sentinel));
-          if (currentCount + more.length >= sampleVideos.length) io.disconnect();
+          load();
         }
       });
     }, { root: null, rootMargin: '200px' });
@@ -393,8 +430,8 @@
   }
 
   function openReel(index) {
-    state.reelIndex = (index + sampleReels.length) % sampleReels.length;
-    const reel = sampleReels[state.reelIndex];
+    state.reelIndex = index;
+    const reel = sampleReels[index] || sampleReels[0];
     reelVideo.src = reel.src;
     reelVideo.poster = thumbAsDataUrl(reel.title, 9, 16);
     reelVideo.currentTime = 0;
@@ -460,52 +497,55 @@
   }
 
   function openVideo(id) {
-    const video = sampleVideos.find(v => v.id === id);
-    if (!video) return;
-    videoEl.src = video.src;
-    videoEl.poster = thumbAsDataUrl(video.title, 16, 9);
-    videoEl.currentTime = 0;
-    playPause.textContent = 'Play';
-    volume.value = 100; videoEl.volume = 1;
-    playbackRate.value = '1'; videoEl.playbackRate = 1;
-    settingsMenu.hidden = true;
+    BWApi.getVideo(id).then(video => {
+      if (!video) return;
+      videoEl.src = video.hls || video.src;
+      videoEl.poster = video.thumb || thumbAsDataUrl(video.title, 16, 9);
+      videoEl.currentTime = 0;
+      playPause.textContent = 'Play';
+      volume.value = 100; videoEl.volume = 1;
+      playbackRate.value = '1'; videoEl.playbackRate = 1;
+      settingsMenu.hidden = true;
 
-    vpTitle.textContent = video.title;
-    vpDescText.textContent = video.description;
+      vpTitle.textContent = video.title;
+      vpDescText.textContent = video.description;
 
-    setLikeState(id, state.likes.has(id));
-    setSaveState(id, state.saves.has(id));
+      setLikeState(id, state.likes.has(id));
+      setSaveState(id, state.saves.has(id));
 
-    renderComments(id);
-    renderRelated(id);
+      renderComments(id);
+      renderRelated(id);
 
-    videoOverlay.hidden = false;
-    location.hash = `#/video/${id}`;
+      videoOverlay.hidden = false;
+      location.hash = `#/video/${id}`;
+    });
   }
 
   function renderComments(id) {
-    const all = state.comments[id] || [];
-    commentsList.innerHTML = '';
-    all.forEach(c => {
-      const li = document.createElement('li');
-      li.textContent = c.text;
-      commentsList.appendChild(li);
+    BWApi.getComments(id).then(({ items }) => {
+      commentsList.innerHTML = '';
+      items.forEach(c => {
+        const li = document.createElement('li');
+        li.textContent = c.text;
+        commentsList.appendChild(li);
+      });
     });
   }
 
   function renderRelated(id) {
-    const current = sampleVideos.find(v => v.id === id);
-    const sameCat = sampleVideos.filter(v => v.category === current.category && v.id !== id).slice(0, 10);
-    relatedList.innerHTML = '';
-    sameCat.forEach(v => {
-      const card = document.createElement('div');
-      card.className = 'related__card';
-      card.innerHTML = `
-        <div class="related__thumb" data-bg="${v.thumb}"></div>
-        <div class="related__title">${escapeHtml(v.title)}</div>
-      `;
-      on(card, 'click', () => openVideo(v.id));
-      relatedList.appendChild(card);
+    BWApi.getRelated(id).then(({ items }) => {
+      relatedList.innerHTML = '';
+      items.forEach(v => {
+        const card = document.createElement('div');
+        card.className = 'related__card';
+        card.innerHTML = `
+          <div class="related__thumb" data-bg="${v.thumb}"></div>
+          <div class="related__title">${escapeHtml(v.title)}</div>
+        `;
+        on(card, 'click', () => openVideo(v.id));
+        relatedList.appendChild(card);
+      });
+      lazyLoadInit();
     });
   }
 
@@ -676,4 +716,10 @@
   }
 
   function persistComments() { localStorage.setItem('comments', JSON.stringify(state.comments)); }
+
+  function categoryFromHash() {
+    const h = location.hash;
+    if (h.startsWith('#/category/')) return h.split('/')[2];
+    return null;
+  }
 })();
