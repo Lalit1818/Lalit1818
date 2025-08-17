@@ -235,6 +235,72 @@
     return matches;
   }
 
+  // Reels list
+  function renderReels() {
+    if (!reelsList) return;
+    reelsList.innerHTML = '';
+    BWApi.getReels({}).then(({ items }) => {
+      state.reelsLoaded = items || [];
+      (items || []).forEach((reel, idx) => {
+        const card = document.createElement('button');
+        card.className = 'reel-card';
+        card.setAttribute('aria-label', 'Open reel: ' + reel.title);
+        card.innerHTML = `
+          <div class="reel-card__thumb" data-bg="${reel.thumb}"></div>
+          <div class="reel-card__label">${escapeHtml(reel.title)}</div>
+        `;
+        on(card, 'click', () => openReel(idx));
+        reelsList.appendChild(card);
+      });
+      lazyLoadInit();
+    }).catch(console.error);
+  }
+
+  // Videos grid
+  function renderVideos() {
+    if (!videoGrid) return;
+    videoGrid.innerHTML = '';
+    let page = 1; const pageSize = 9; let loading = false; let done = false; let currentCategory = categoryFromHash() || 'all';
+    const sentinel = document.createElement('div');
+    sentinel.id = 'gridSentinel'; sentinel.style.height = '1px';
+    videoGrid.appendChild(sentinel);
+    let io;
+    const load = async () => {
+      if (loading || done) return; loading = true;
+      try {
+        const { items, nextPage } = await BWApi.getVideos({ category: currentCategory, page, pageSize });
+        (items || []).forEach(v => videoGrid.insertBefore(createVideoCard(v), sentinel));
+        if (nextPage) page = nextPage; else { done = true; if (io) io.disconnect(); }
+      } catch (e) { console.error(e); }
+      finally { loading = false; }
+    };
+    io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => { if (entry.isIntersecting) load(); });
+    }, { root: null, rootMargin: '200px' });
+    io.observe(sentinel);
+    load();
+  }
+
+  function createVideoCard(v) {
+    const el = document.createElement('article');
+    el.className = 'video-card';
+    el.innerHTML = `
+      <div class="video-card__media" data-bg="${v.thumb}"></div>
+      <div class="video-card__body">
+        <div class="video-card__avatar">${abbr(v.channel || 'CH')}</div>
+        <div>
+          <h3 class="video-card__title">${escapeHtml(v.title || 'Untitled')}</h3>
+          <div class="video-card__meta">
+            <span>${escapeHtml(v.channel || '')}</span>
+            ${v.badge ? `<span class="badge-sm">${escapeHtml(v.badge)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+    on(el, 'click', () => { if (v.id) openVideo(v.id); });
+    return el;
+  }
+
   // Data for liked/saved/history mapping to videos
   function getLikedVideos() { return sampleVideos.filter(v => state.likes.has(v.id)); }
   function getSavedVideos() { return sampleVideos.filter(v => state.saves.has(v.id)); }
