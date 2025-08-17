@@ -120,193 +120,13 @@
   setupDragScroll();
   setupCursorBehaviors();
 
-  // Drawer
-  function setupDrawer() {
-    const open = () => { sideDrawer.classList.add('open'); scrim.hidden = false; };
-    const close = () => { sideDrawer.classList.remove('open'); scrim.hidden = true; };
-    on(menuBtn, 'click', open);
-    on(drawerClose, 'click', close);
-    on(scrim, 'click', close);
-    $$('.drawer__item').forEach(a => on(a, 'click', close));
-  }
-
-  // Notifications
-  function setupNotifications() {
-    on(notifBtn, 'click', () => {
-      const expanded = notifDropdown.hidden;
-      notifDropdown.hidden = !expanded;
-      notifBtn.setAttribute('aria-expanded', String(expanded));
-      if (expanded) updateNotifList();
-    });
-
-    on(enablePush, 'click', async () => {
-      if (!('Notification' in window)) {
-        alert('Notifications are not supported in this browser.');
-        return;
-      }
-      try {
-        const perm = await Notification.requestPermission();
-        if (perm === 'granted') {
-          new Notification('Bharatwatch', { body: 'Push notifications enabled!' });
-        }
-      } catch (e) { console.error(e); }
-    });
-  }
-
-  function addNotification(text) {
-    const item = { id: cryptoRandom(), text, ts: Date.now(), read: false };
-    state.notifications.unshift(item);
-    notifBadge.hidden = false;
-    notifBadge.textContent = String(state.notifications.filter(n => !n.read).length);
-    updateNotifList();
-  }
-
-  function updateNotifList() {
-    notifList.innerHTML = '';
-    state.notifications.forEach(n => {
-      const li = document.createElement('li');
-      li.textContent = new Date(n.ts).toLocaleTimeString() + ' · ' + n.text;
-      notifList.appendChild(li);
-    });
-  }
-
-  function simulateLiveNotifications() {
-    setInterval(() => {
-      if (Math.random() < 0.25) addNotification(randomPick([
-        'New video from channels you follow',
-        '5 new comments on your video',
-        'Your reel is trending now!',
-        'New badge earned: Rising Creator'
-      ]));
-    }, 10000);
-  }
-
-  // Search
-  function setupSearch() {
-    on(searchInput, 'input', () => {
-      const q = searchInput.value.trim();
-      $('#clearSearch').hidden = q.length === 0;
-      if (q.length === 0) { searchSuggestions.hidden = true; searchSuggestions.innerHTML = ''; return; }
-      const suggestions = getSuggestions(q, 'all').slice(0, 8);
-      searchSuggestions.innerHTML = '';
-      suggestions.forEach(s => {
-        const li = document.createElement('li');
-        li.role = 'option';
-        li.textContent = s.label;
-        on(li, 'click', () => {
-          searchInput.value = s.label;
-          searchSuggestions.hidden = true;
-          navigateTo(s.href);
-        });
-        searchSuggestions.appendChild(li);
-      });
-      searchSuggestions.hidden = suggestions.length === 0;
-    });
-
-    on(clearSearch, 'click', () => {
-      searchInput.value = '';
-      searchSuggestions.hidden = true;
-      clearSearch.hidden = true;
-      searchInput.focus();
-    });
-
-    // Category chips open within the app (SPA)
-    $$('.search__filters .chip').forEach(chip => {
-      on(chip, 'click', (e) => {
-        $$('.search__filters .chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        const href = chip.getAttribute('href');
-        if (href && href.startsWith('#')) {
-          e.preventDefault();
-          navigateTo(href);
-        }
-      });
-    });
-  }
-
-  function getSuggestions(q, filter) {
-    const lc = q.toLowerCase();
-    const matches = [];
-    if (filter === 'all' || filter === 'video') {
-      sampleVideos.forEach(v => { if (v.title.toLowerCase().includes(lc)) matches.push({ label: 'Video · ' + v.title, href: `#/video/${v.id}` }); });
-      sampleReels.forEach(r => { if (r.title.toLowerCase().includes(lc)) matches.push({ label: 'Reel · ' + r.title, href: '#/reels' }); });
-    }
-    if (filter === 'all' || filter === 'channel') {
-      const channels = new Set([...sampleVideos.map(v => v.channel), ...sampleReels.map(r => r.channel)]);
-      channels.forEach(ch => { if (ch.toLowerCase().includes(lc)) matches.push({ label: 'Channel · ' + ch, href: '#/home' }); });
-    }
-    // categories handled separately via chips
-    return matches;
-  }
-
-  // Categories removed from hero as per request
-  function renderReels() {
-    reelsList.innerHTML = '';
-    // Load via API/mocks
-    BWApi.getReels({}).then(({ items }) => {
-      items.forEach((reel, idx) => {
-        const card = document.createElement('button');
-        card.className = 'reel-card';
-        card.setAttribute('aria-label', 'Open reel: ' + reel.title);
-        card.innerHTML = `
-          <div class="reel-card__thumb" data-bg="${reel.thumb}"></div>
-          <div class="reel-card__label">${escapeHtml(reel.title)}</div>
-        `;
-        on(card, 'click', () => openReel(idx));
-        reelsList.appendChild(card);
-      });
-      lazyLoadInit();
-    }).catch(console.error);
-  }
-
-  // Videos grid
-  function renderVideos() {
-    videoGrid.innerHTML = '';
-    let page = 1; const pageSize = 9; let loading = false; let done = false; let currentCategory = categoryFromHash() || 'all';
-    const load = async () => {
-      if (loading || done) return; loading = true;
-      try {
-        const { items, nextPage } = await BWApi.getVideos({ category: currentCategory, page, pageSize });
-        items.forEach(v => videoGrid.insertBefore(createVideoCard(v), sentinel));
-        if (nextPage) page = nextPage; else { done = true; io.disconnect(); }
-      } catch (e) { console.error(e); }
-      finally { loading = false; }
-    };
-    load();
-    // Lazy append more
-    const sentinel = document.createElement('div');
-    sentinel.id = 'gridSentinel';
-    sentinel.style.height = '1px';
-    videoGrid.appendChild(sentinel);
-
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          load();
-        }
-      });
-    }, { root: null, rootMargin: '200px' });
-    io.observe(sentinel);
-  }
-
-  function createVideoCard(v) {
-    const el = document.createElement('article');
-    el.className = 'video-card';
-    el.innerHTML = `
-      <div class="video-card__media" data-bg="${v.thumb}"></div>
-      <div class="video-card__body">
-        <div class="video-card__avatar">${abbr(v.channel)}</div>
-        <div>
-          <h3 class="video-card__title">${escapeHtml(v.title)}</h3>
-          <div class="video-card__meta">
-            <span>${escapeHtml(v.channel)}</span>
-            ${v.badge ? `<span class="badge-sm">${escapeHtml(v.badge)}</span>` : ''}
-          </div>
-        </div>
-      </div>
-    `;
-    on(el, 'click', () => openVideo(v.id));
-    return el;
+  // Data for liked/saved/history mapping to videos
+  function getLikedVideos() { return sampleVideos.filter(v => state.likes.has(v.id)); }
+  function getSavedVideos() { return sampleVideos.filter(v => state.saves.has(v.id)); }
+  function getHistoryVideos() { return JSON.parse(localStorage.getItem('history') || '[]').map(id => sampleVideos.find(v => v.id === id)).filter(Boolean); }
+  function pushHistory(id) {
+    const cur = JSON.parse(localStorage.getItem('history') || '[]');
+    if (cur[0] !== id) { cur.unshift(id); if (cur.length > 100) cur.pop(); localStorage.setItem('history', JSON.stringify(cur)); }
   }
 
   // Routing (SPA)
@@ -330,7 +150,7 @@
       openReel(0);
       return;
     }
-    const known = ['#/home','#/profile','#/liked','#/saved','#/history','#/settings','#/monetization','#/policy','#/contact'];
+    const known = ['#/home','#/profile','#/liked','#/saved','#/history','#/settings','#/monetization','#/policy','#/contact','#/login'];
     if (hash.startsWith('#/category/')) {
       const slug = hash.split('/')[2];
       document.title = `Bharatwatch · ${capitalize(slug)}`;
@@ -350,7 +170,18 @@
     if (known.includes(hash)) {
       if (hash === '#/home') { pageContainer.hidden = true; return; }
       const title = hash.replace('#/','').replace(/\b\w/g, c => c.toUpperCase()).replace(/-/g,' ');
-      showPage(title, renderStubPage(title));
+      switch (hash) {
+        case '#/profile': showPage('Profile', renderProfilePage()); break;
+        case '#/liked': showPage('Liked Videos', renderSimpleList(getLikedVideos())); break;
+        case '#/saved': showPage('Saved Videos', renderSimpleList(getSavedVideos())); break;
+        case '#/history': showPage('Watch History', renderSimpleList(getHistoryVideos())); break;
+        case '#/settings': showPage('Settings', renderSettingsPage()); break;
+        case '#/monetization': showPage('Monetization', renderMonetizationPage()); break;
+        case '#/policy': showPage('Policies', renderPolicyPage()); break;
+        case '#/contact': showPage('Contact', renderContactPage()); break;
+        case '#/login': showPage('Sign In', renderLoginPage()); break;
+        default: showPage(title, renderStubPage(title));
+      }
       return;
     }
     pageContainer.hidden = true;
@@ -722,4 +553,169 @@
     if (h.startsWith('#/category/')) return h.split('/')[2];
     return null;
   }
+
+  // Page renderers
+  function renderSimpleList(videos) {
+    const wrap = document.createElement('div');
+    const grid = document.createElement('div'); grid.className = 'content-grid';
+    videos.forEach(v => grid.appendChild(createContentCard(v)));
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  function renderProfilePage() {
+    const wrap = document.createElement('div'); wrap.className = 'profile';
+    // Banner
+    const banner = document.createElement('div'); banner.className = 'profile__banner'; banner.innerHTML = 'Channel Banner';
+    const bannerEdit = document.createElement('button'); bannerEdit.className = 'chip edit-btn'; bannerEdit.textContent = 'Edit banner';
+    on(bannerEdit, 'click', () => openEditModal({ field: 'banner' }));
+    banner.appendChild(bannerEdit);
+    wrap.appendChild(banner);
+
+    // Header
+    const header = document.createElement('div'); header.className = 'profile__header';
+    const avatar = document.createElement('div'); avatar.className = 'profile__avatar'; avatar.innerHTML = '<span>IMG</span>';
+    on(avatar, 'click', () => openEditModal({ field: 'profilePhoto' }));
+    const meta = document.createElement('div'); meta.className = 'profile__meta'; meta.innerHTML = '<h2 id="channelName">Your Channel</h2><div class="sub">@handle • India</div>';
+    const actions = document.createElement('div'); actions.className = 'profile__actions';
+    const editBtn = document.createElement('button'); editBtn.className = 'chip'; editBtn.textContent = 'Edit Profile';
+    on(editBtn, 'click', () => openEditModal({ field: 'profile' }));
+    const signOut = document.createElement('button'); signOut.className = 'chip'; signOut.textContent = 'Sign out';
+    on(signOut, 'click', () => { localStorage.removeItem('auth'); location.hash = '#/login'; });
+    actions.append(editBtn, signOut);
+    header.append(avatar, meta, actions);
+    wrap.appendChild(header);
+
+    // Tabs
+    const tabs = document.createElement('div'); tabs.className = 'tabs';
+    const tabNames = ['Videos','Reels','Live','Playlist'];
+    const tabEls = tabNames.map(name => { const b = document.createElement('button'); b.className = 'tab'; b.textContent = name; return b; });
+    tabEls[0].classList.add('active');
+    tabs.append(...tabEls);
+    wrap.appendChild(tabs);
+
+    const grid = document.createElement('div'); grid.className = 'content-grid'; wrap.appendChild(grid);
+    const fill = (name) => {
+      grid.innerHTML = '';
+      let items = [];
+      if (name === 'Videos') items = sampleVideos.slice(0, 9);
+      if (name === 'Reels') items = sampleReels.slice(0, 9).map(r => ({ id: r.id, title: r.title, thumb: r.thumb }));
+      if (name === 'Live') items = sampleVideos.slice(9, 15);
+      if (name === 'Playlist') items = sampleVideos.slice(3, 12);
+      items.forEach(i => grid.appendChild(createContentCard(i)));
+    };
+    tabEls.forEach(btn => on(btn, 'click', () => { tabEls.forEach(b => b.classList.remove('active')); btn.classList.add('active'); fill(btn.textContent); }));
+    fill('Videos');
+
+    return wrap;
+  }
+
+  function createContentCard(item) {
+    const card = document.createElement('div'); card.className = 'content-card';
+    card.innerHTML = `
+      <div class="content-card__media" data-bg="${item.thumb || thumbAsDataUrl(item.title || 'Content', 16, 9)}"></div>
+      <div class="content-card__body">
+        <h4 class="content-card__title">${escapeHtml(item.title || 'Untitled')}</h4>
+        <div style="position:relative;">
+          <button class="kebab" aria-label="More">⋮</button>
+        </div>
+      </div>
+    `;
+    const kebab = $('.kebab', card);
+    on(kebab, 'click', (e) => {
+      e.stopPropagation();
+      showMenu(kebab, [
+        { label: 'Edit details', action: () => openEditModal({ field: 'content', item }) },
+        { label: 'Set Private', action: () => alert('Set to Private') },
+        { label: 'Set Public', action: () => alert('Set to Public') },
+      ]);
+    });
+    on(card, 'click', () => { if (item.id?.startsWith('vid')) openVideo(item.id); });
+    return card;
+  }
+
+  function showMenu(anchor, items) {
+    closeMenus();
+    const rect = anchor.getBoundingClientRect();
+    const menu = document.createElement('div'); menu.className = 'menu';
+    items.forEach(it => {
+      const b = document.createElement('button'); b.className = 'menu__item'; b.textContent = it.label; on(b, 'click', () => { closeMenus(); it.action(); }); menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+    menu.style.left = `${rect.left}px`; menu.style.top = `${rect.bottom + 6}px`;
+    const off = () => { document.removeEventListener('click', off); menu.remove(); };
+    setTimeout(() => document.addEventListener('click', off), 0);
+  }
+  function closeMenus() { $$('.menu').forEach(m => m.remove()); }
+
+  function openEditModal({ field, item }) {
+    const modal = document.createElement('div'); modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal__card">
+        <h3>Edit ${field === 'content' ? 'Content' : 'Profile'}</h3>
+        <div class="form">
+          ${field === 'content' ? contentFields(item) : profileFields()}
+          <div class="form__row">
+            <button class="chip" id="cancelBtn">Cancel</button>
+            <button class="chip" id="saveBtn">Save</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    on($('#cancelBtn', modal), 'click', () => modal.remove());
+    on($('#saveBtn', modal), 'click', () => { alert('Saved'); modal.remove(); });
+  }
+
+  function contentFields(item) {
+    return `
+      <div class="field"><label>Title</label><input type="text" value="${escapeHtml(item.title || '')}"></div>
+      <div class="field"><label>Description</label><textarea rows="3">${escapeHtml(item.description || '')}</textarea></div>
+      <div class="field"><label>Thumbnail URL</label><input type="text" value="${escapeHtml(item.thumb || '')}"></div>
+      <div class="field"><label>Keywords</label><input type="text" value=""></div>
+      <div class="field"><label>Visibility</label><select><option>Public</option><option>Private</option></select></div>
+    `;
+  }
+  function profileFields() {
+    return `
+      <div class="field"><label>Channel Name</label><input type="text" value="Your Channel"></div>
+      <div class="field"><label>Profile Photo</label><input type="text" placeholder="Image URL"></div>
+      <div class="field"><label>Channel Banner</label><input type="text" placeholder="Image URL"></div>
+      <div class="field"><label>Keywords</label><input type="text" placeholder="music, gaming"></div>
+      <div class="field"><label>Location</label><input type="text" value="India"></div>
+      <div class="field"><label>Language</label><input type="text" value="English"></div>
+      <div class="field"><label>Other Info</label><textarea rows="3"></textarea></div>
+    `;
+  }
+
+  function renderSettingsPage() { const d = document.createElement('div'); d.innerHTML = '<p>Settings page coming soon.</p>'; return d; }
+  function renderMonetizationPage() { const d = document.createElement('div'); d.innerHTML = '<p>Monetization dashboard coming soon.</p>'; return d; }
+  function renderPolicyPage() { const d = document.createElement('div'); d.innerHTML = '<p>BharatWatch policy content.</p>'; return d; }
+  function renderContactPage() { const d = document.createElement('div'); d.innerHTML = '<p>Contact us at support@bharatwatch.com</p>'; return d; }
+
+  function renderLoginPage() {
+    const d = document.createElement('div'); d.className = 'login';
+    d.innerHTML = `
+      <h2>Sign in to Bharatwatch</h2>
+      <div class="field"><label>Username</label><input id="loginUser" type="text"></div>
+      <div class="field"><label>Password</label><input id="loginPass" type="password"></div>
+      <div class="form__row"><button class="chip" id="loginBtn">Sign In</button></div>
+      <div class="providers">
+        <button>Continue with Google</button>
+        <button>Continue with GitHub</button>
+      </div>
+    `;
+    on($('#loginBtn', d), 'click', async () => {
+      const u = $('#loginUser', d).value.trim(); const p = $('#loginPass', d).value.trim();
+      if (!u || !p) { alert('Enter credentials'); return; }
+      // Replace with real API call
+      localStorage.setItem('auth', JSON.stringify({ user: u }));
+      location.hash = '#/profile';
+    });
+    return d;
+  }
+
+  // Hook into video open to push history
+  const _openVideo = openVideo;
+  openVideo = function(id) { pushHistory(id); _openVideo(id); };
 })();
