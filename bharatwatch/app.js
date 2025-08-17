@@ -121,6 +121,104 @@
   setupDragScroll();
   setupCursorBehaviors();
 
+  // Drawer
+  function setupDrawer() {
+    const open = () => { sideDrawer.classList.add('open'); scrim.hidden = false; };
+    const close = () => { sideDrawer.classList.remove('open'); scrim.hidden = true; };
+    if (menuBtn) on(menuBtn, 'click', open);
+    if (drawerClose) on(drawerClose, 'click', close);
+    if (scrim) on(scrim, 'click', close);
+    $$('.drawer__item').forEach(a => on(a, 'click', close));
+  }
+
+  // Notifications
+  function setupNotifications() {
+    if (!notifBtn) return;
+    on(notifBtn, 'click', () => {
+      const expanded = notifDropdown.hidden;
+      notifDropdown.hidden = !expanded;
+      notifBtn.setAttribute('aria-expanded', String(expanded));
+      if (expanded) updateNotifList();
+    });
+
+    if (enablePush) {
+      on(enablePush, 'click', async () => {
+        if (!('Notification' in window)) { alert('Notifications not supported'); return; }
+        try { const perm = await Notification.requestPermission(); if (perm === 'granted') new Notification('Bharatwatch', { body: 'Push enabled' }); } catch {}
+      });
+    }
+  }
+
+  function addNotification(text) {
+    const item = { id: cryptoRandom(), text, ts: Date.now(), read: false };
+    state.notifications.unshift(item);
+    if (notifBadge) { notifBadge.hidden = false; notifBadge.textContent = String(state.notifications.filter(n => !n.read).length); }
+    updateNotifList();
+  }
+
+  function updateNotifList() {
+    if (!notifList) return;
+    notifList.innerHTML = '';
+    state.notifications.forEach(n => {
+      const li = document.createElement('li');
+      li.textContent = new Date(n.ts).toLocaleTimeString() + ' · ' + n.text;
+      notifList.appendChild(li);
+    });
+  }
+
+  function simulateLiveNotifications() {
+    setInterval(() => {
+      if (Math.random() < 0.25) addNotification(randomPick([
+        'New video from channels you follow',
+        '5 new comments on your video',
+        'Your reel is trending now!',
+        'New badge earned: Rising Creator'
+      ]));
+    }, 10000);
+  }
+
+  // Search
+  function setupSearch() {
+    if (!searchInput) return;
+    on(searchInput, 'input', () => {
+      const q = searchInput.value.trim();
+      if ($('#clearSearch')) $('#clearSearch').hidden = q.length === 0;
+      if (q.length === 0) { if (searchSuggestions) { searchSuggestions.hidden = true; searchSuggestions.innerHTML = ''; } return; }
+      const suggestions = getSuggestions(q, 'all').slice(0, 8);
+      if (!searchSuggestions) return;
+      searchSuggestions.innerHTML = '';
+      suggestions.forEach(s => {
+        const li = document.createElement('li');
+        li.role = 'option';
+        li.textContent = s.label;
+        on(li, 'click', () => { searchInput.value = s.label; searchSuggestions.hidden = true; navigateTo(s.href); });
+        searchSuggestions.appendChild(li);
+      });
+      searchSuggestions.hidden = suggestions.length === 0;
+    });
+
+    if (clearSearch) on(clearSearch, 'click', () => { searchInput.value = ''; searchSuggestions.hidden = true; clearSearch.hidden = true; searchInput.focus(); });
+
+    $$('.search__filters .chip').forEach(chip => {
+      on(chip, 'click', (e) => {
+        $$('.search__filters .chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        const href = chip.getAttribute('href');
+        if (href && href.startsWith('#')) { e.preventDefault(); navigateTo(href); }
+      });
+    });
+  }
+
+  function getSuggestions(q, filter) {
+    const lc = q.toLowerCase();
+    const matches = [];
+    sampleVideos.forEach(v => { if (v.title.toLowerCase().includes(lc)) matches.push({ label: 'Video · ' + v.title, href: `#/video/${v.id}` }); });
+    sampleReels.forEach(r => { if (r.title.toLowerCase().includes(lc)) matches.push({ label: 'Reel · ' + r.title, href: '#/reels' }); });
+    const channels = new Set([...sampleVideos.map(v => v.channel), ...sampleReels.map(r => r.channel)]);
+    channels.forEach(ch => { if (ch.toLowerCase().includes(lc)) matches.push({ label: 'Channel · ' + ch, href: '#/home' }); });
+    return matches;
+  }
+
   // Data for liked/saved/history mapping to videos
   function getLikedVideos() { return sampleVideos.filter(v => state.likes.has(v.id)); }
   function getSavedVideos() { return sampleVideos.filter(v => state.saves.has(v.id)); }
