@@ -159,8 +159,7 @@
       const q = searchInput.value.trim();
       $('#clearSearch').hidden = q.length === 0;
       if (q.length === 0) { searchSuggestions.hidden = true; searchSuggestions.innerHTML = ''; return; }
-      const filter = state.filter;
-      const suggestions = getSuggestions(q, filter).slice(0, 8);
+      const suggestions = getSuggestions(q, 'all').slice(0, 8);
       searchSuggestions.innerHTML = '';
       suggestions.forEach(s => {
         const li = document.createElement('li');
@@ -183,12 +182,11 @@
       searchInput.focus();
     });
 
+    // Category chips open in new tab via anchor target=_blank; keep active styling locally
     $$('.search__filters .chip').forEach(chip => {
-      on(chip, 'click', () => {
+      on(chip, 'click', (e) => {
         $$('.search__filters .chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
-        state.filter = chip.dataset.filter;
-        searchInput.dispatchEvent(new Event('input'));
       });
     });
   }
@@ -204,9 +202,7 @@
       const channels = new Set([...sampleVideos.map(v => v.channel), ...sampleReels.map(r => r.channel)]);
       channels.forEach(ch => { if (ch.toLowerCase().includes(lc)) matches.push({ label: 'Channel · ' + ch, href: '#/home' }); });
     }
-    if (filter === 'all' || filter === 'category') {
-      categories.forEach(cat => { if (cat.toLowerCase().includes(lc)) matches.push({ label: 'Category · ' + cat, href: `#/category/${cat.toLowerCase()}` }); });
-    }
+    // categories handled separately via chips
     return matches;
   }
 
@@ -295,7 +291,19 @@
     const known = ['#/home','#/profile','#/liked','#/saved','#/history','#/settings','#/monetization','#/policy','#/contact'];
     if (hash.startsWith('#/category/')) {
       const slug = hash.split('/')[2];
-      showPage(capitalize(slug), renderCategoryPage(slug));
+      // Render full-page category view (no modal) for new tab
+      document.title = `Bharatwatch · ${capitalize(slug)}`;
+      document.body.scrollTop = document.documentElement.scrollTop = 0;
+      const main = $('#main');
+      if (main) {
+        // Replace video grid with filtered content
+        const grid = $('#videoGrid');
+        if (grid) {
+          grid.innerHTML = '';
+          const filtered = sampleVideos.filter(v => v.category.toLowerCase() === slug || slug === 'all' || (slug === 'movie' && v.category.toLowerCase() === 'entertainment'));
+          filtered.forEach(v => grid.appendChild(createVideoCard(v)));
+        }
+      }
       return;
     }
     if (known.includes(hash)) {
