@@ -182,11 +182,16 @@
       searchInput.focus();
     });
 
-    // Category chips open in new tab via anchor target=_blank; keep active styling locally
+    // Category chips open within the app (SPA)
     $$('.search__filters .chip').forEach(chip => {
       on(chip, 'click', (e) => {
         $$('.search__filters .chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
+        const href = chip.getAttribute('href');
+        if (href && href.startsWith('#')) {
+          e.preventDefault();
+          navigateTo(href);
+        }
       });
     });
   }
@@ -291,12 +296,11 @@
     const known = ['#/home','#/profile','#/liked','#/saved','#/history','#/settings','#/monetization','#/policy','#/contact'];
     if (hash.startsWith('#/category/')) {
       const slug = hash.split('/')[2];
-      // Render full-page category view (no modal) for new tab
       document.title = `Bharatwatch · ${capitalize(slug)}`;
       document.body.scrollTop = document.documentElement.scrollTop = 0;
+      syncActiveCategoryChip(slug);
       const main = $('#main');
       if (main) {
-        // Replace video grid with filtered content
         const grid = $('#videoGrid');
         if (grid) {
           grid.innerHTML = '';
@@ -341,6 +345,13 @@
     filtered.forEach(v => grid.appendChild(createVideoCard(v)));
     wrap.appendChild(grid);
     return wrap;
+  }
+
+  function syncActiveCategoryChip(slug) {
+    const chips = $$('.search__filters .chip');
+    chips.forEach(c => c.classList.remove('active'));
+    const match = chips.find(c => (c.dataset.category || '').toLowerCase() === slug);
+    if (match) match.classList.add('active');
   }
 
   // Reels overlay
