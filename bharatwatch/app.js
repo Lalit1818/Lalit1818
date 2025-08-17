@@ -89,6 +89,8 @@
   setupVideoPlayer();
   simulateLiveNotifications();
   lazyLoadInit();
+  setupDragScroll();
+  setupCursorBehaviors();
 
   // Drawer
   function setupDrawer() {
@@ -368,6 +370,12 @@
       if (e.deltaY > 0) nextReel(); else prevReel();
     }, { passive: true });
 
+    on(reelPlayer, 'mousemove', debounce(() => { document.body.classList.remove('hide-cursor'); }, 2000));
+    on(reelPlayer, 'mousemove', () => { document.body.classList.remove('hide-cursor'); });
+    let cursorHideTimer;
+    on(reelPlayer, 'mouseenter', () => { clearTimeout(cursorHideTimer); cursorHideTimer = setTimeout(() => document.body.classList.add('hide-cursor'), 1500); });
+    on(reelPlayer, 'mouseleave', () => { document.body.classList.remove('hide-cursor'); clearTimeout(cursorHideTimer); });
+
     let touchStartY = 0;
     on(reelPlayer, 'touchstart', e => { touchStartY = e.touches[0].clientY; }, { passive: true });
     on(reelPlayer, 'touchend', e => {
@@ -435,6 +443,12 @@
       if (!videoOverlay.hidden && e.key === ' ') { e.preventDefault(); playPause.click(); }
       if (!reelPlayer.hidden && ['ArrowUp','ArrowDown'].includes(e.key)) { e.preventDefault(); if (e.key==='ArrowUp') nextReel(); else prevReel(); }
     });
+
+    // Hide cursor after inactivity over video
+    const vp = $('.vp__aspect');
+    let hideTimer;
+    on(vp, 'mousemove', () => { document.body.classList.remove('hide-cursor'); clearTimeout(hideTimer); hideTimer = setTimeout(() => document.body.classList.add('hide-cursor'), 1500); });
+    on(vp, 'mouseleave', () => { document.body.classList.remove('hide-cursor'); clearTimeout(hideTimer); });
   }
 
   function openVideo(id) {
@@ -523,8 +537,10 @@
     const el = $('#videoEl');
     if (!document.fullscreenElement) {
       el.requestFullscreen?.();
+      document.body.classList.add('hide-cursor');
     } else {
       document.exitFullscreen?.();
+      document.body.classList.remove('hide-cursor');
     }
   }
 
@@ -553,6 +569,42 @@
       });
     }, { rootMargin: '300px' });
     nodes.forEach(n => io.observe(n));
+  }
+
+  function setupDragScroll() {
+    const draggables = ['.reels__scroll','.categories__scroll','.related'];
+    draggables.forEach(sel => {
+      const el = $(sel);
+      if (!el) return;
+      let isDown = false, startX = 0, scrollLeft = 0;
+      on(el, 'mousedown', (e) => { isDown = true; el.classList.add('dragging'); startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; });
+      on(window, 'mousemove', (e) => { if (!isDown) return; e.preventDefault(); const x = e.pageX - el.offsetLeft; const walk = (x - startX) * 1; el.scrollLeft = scrollLeft - walk; });
+      on(window, 'mouseup', () => { isDown = false; el.classList.remove('dragging'); });
+      // touch support
+      let startTX = 0, startSL = 0;
+      on(el, 'touchstart', (e) => { el.classList.add('dragging'); startTX = e.touches[0].pageX; startSL = el.scrollLeft; }, { passive: true });
+      on(el, 'touchmove', (e) => { const dx = e.touches[0].pageX - startTX; el.scrollLeft = startSL - dx; }, { passive: true });
+      on(el, 'touchend', () => { el.classList.remove('dragging'); });
+    });
+  }
+
+  function setupCursorBehaviors() {
+    // Simulate busy cursor on upload button
+    const uploadBtn = $('#uploadBtn');
+    if (uploadBtn) {
+      on(uploadBtn, 'click', async () => {
+        document.body.classList.add('busy');
+        await sleep(1200);
+        document.body.classList.remove('busy');
+        location.hash = '#/upload';
+      });
+    }
+  }
+
+  // Utils
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function debounce(fn, wait) {
+    let t; return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this,args), wait); };
   }
 
   // Helpers

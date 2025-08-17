@@ -173,3 +173,29 @@ body {
 @media (max-width: 720px) {
   .bottom-nav { display: grid; }
 }
+
+/* Cursor customization */
+a, button, .icon-btn, .chip, .link, .drawer__item, .bn__item, .fab, .control, .settings__item, .reel-card, .video-card, .related__card { cursor: pointer; }
+
+/* Drag-to-scroll areas */
+.reels__scroll, .categories__scroll, .related { cursor: grab; }
+.reels__scroll.dragging, .categories__scroll.dragging, .related.dragging { cursor: grabbing; }
+.dragging { user-select: none; }
+
+/* Demonstrative move cursor for draggable surfaces */
+.ad__box { cursor: move; }
+
+/* Custom play cursor on media and special buttons */
+.reel-card,
+.video-card__media,
+.bn__item.upload,
+.brand__mark {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="%23ff7a00"/><polygon points="10,8 16,12 10,16" fill="%23fff"/></svg>') 6 6, pointer;
+}
+
+/* Busy/wait cursor when processing */
+body.busy { cursor: progress; }
+body.busy * { cursor: progress !important; }
+
+/* Hide cursor for immersive experiences */
+.hide-cursor, .hide-cursor * { cursor: none !important; }
